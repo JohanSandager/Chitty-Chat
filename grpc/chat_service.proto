@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package chat_service;
+
+option go_package = "grpc/chat_service";
+
+message ChitChatInformationContainer {
+    int64 lamport_timestamp = 1;
+    oneof these {
+        ChitChatMessage message = 2;
+        ConnectionRequest connection_request = 3;
+    }
+}
+
+message ConnectionRequest {
+    string user_name = 2;
+}
+
+message ChitChatMessage {
+   string user_name = 1;
+   string message = 2;
+}
+
+service ChitChat {
+    rpc Chat (stream ChitChatInformationContainer) returns (stream ChitChatMessage);
+}
