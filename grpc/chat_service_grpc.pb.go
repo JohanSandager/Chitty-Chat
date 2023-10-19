@@ -48,7 +48,7 @@ func (c *chitChatClient) Chat(ctx context.Context, opts ...grpc.CallOption) (Chi
 
 type ChitChat_ChatClient interface {
 	Send(*ChitChatInformationContainer) error
-	Recv() (*ChitChatMessage, error)
+	Recv() (*ChitChatInformationContainer, error)
 	grpc.ClientStream
 }
 
@@ -60,8 +60,8 @@ func (x *chitChatChatClient) Send(m *ChitChatInformationContainer) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *chitChatChatClient) Recv() (*ChitChatMessage, error) {
-	m := new(ChitChatMessage)
+func (x *chitChatChatClient) Recv() (*ChitChatInformationContainer, error) {
+	m := new(ChitChatInformationContainer)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func _ChitChat_Chat_Handler(srv interface{}, stream grpc.ServerStream) error {
 }
 
 type ChitChat_ChatServer interface {
-	Send(*ChitChatMessage) error
+	Send(*ChitChatInformationContainer) error
 	Recv() (*ChitChatInformationContainer, error)
 	grpc.ServerStream
 }
@@ -110,7 +110,7 @@ type chitChatChatServer struct {
 	grpc.ServerStream
 }
 
-func (x *chitChatChatServer) Send(m *ChitChatMessage) error {
+func (x *chitChatChatServer) Send(m *ChitChatInformationContainer) error {
 	return x.ServerStream.SendMsg(m)
 }
 

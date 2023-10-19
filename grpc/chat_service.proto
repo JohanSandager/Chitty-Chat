@@ -9,10 +9,15 @@ message ChitChatInformationContainer {
     oneof these {
         ChitChatMessage message = 2;
         ConnectionRequest connection_request = 3;
+        DisconnectionRequest disconnection_request = 4;
     }
 }
 
 message ConnectionRequest {
+    string user_name = 2;
+}
+
+message DisconnectionRequest {
     string user_name = 2;
 }
 
@@ -22,5 +27,5 @@ message ChitChatMessage {
 }
 
 service ChitChat {
-    rpc Chat (stream ChitChatInformationContainer) returns (stream ChitChatMessage);
+    rpc Chat (stream ChitChatInformationContainer) returns (stream ChitChatInformationContainer);
 }

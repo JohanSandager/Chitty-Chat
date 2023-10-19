@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,16 +33,20 @@ func connectToServer(serverAddress string) (proto.ChitChatClient, error) {
 	conn, err := grpc.Dial(serverAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	if err != nil {
-		log.Fatalf("Could not connect to port %v", serverAddress)
+		log.Fatalf("Could not connect to %v", serverAddress)
 	}
-	log.Printf("Connected to the server at port %v\n", serverAddress)
+	
+	log.Printf("Connected to the server at %v\n", serverAddress)
+
 	return proto.NewChitChatClient(conn), nil
 }
 
 func chat(serverAddress string, user_name string, wg *sync.WaitGroup) {
 	serverConnection, _ := connectToServer(serverAddress)
 
-	stream, _ := serverConnection.Chat(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+
+	stream, _ := serverConnection.Chat(ctx)
 
 	outbound_message := &proto.ConnectionRequest{
 		UserName: user_name,
@@ -53,7 +58,7 @@ func chat(serverAddress string, user_name string, wg *sync.WaitGroup) {
 	stream.Send(container)
 
 	go recieveMessages(stream)
-	go sendMessage(stream, user_name, wg)
+	go sendMessage(stream, user_name, wg, cancel)
 }
 
 func recieveMessages(stream proto.ChitChat_ChatClient) {
@@ -64,26 +69,40 @@ func recieveMessages(stream proto.ChitChat_ChatClient) {
 		} else if err != nil {
 			log.Fatalf("Failed: %v", err)
 		}
-		log.Printf(inbound_message.GetUserName() + ": " + inbound_message.GetMessage())
+		log.Printf(inbound_message.GetMessage().GetUserName() + ": " + inbound_message.GetMessage().GetMessage())
 	}
 }
 
-func sendMessage(stream proto.ChitChat_ChatClient, user_name string, wg *sync.WaitGroup) {
+func sendMessage(stream proto.ChitChat_ChatClient, user_name string, wg *sync.WaitGroup, cancel context.CancelFunc) {
 	defer wg.Done()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		input := scanner.Text()
 
-		if input == "close connection" {
+		if input == "c" {
+			outbound_message := &proto.DisconnectionRequest{
+				UserName: user_name,
+			}
+			container := &proto.ChitChatInformationContainer{
+				These: &proto.ChitChatInformationContainer_DisconnectionRequest{DisconnectionRequest: outbound_message},
+			}
+
+			stream.Send(container)
+			stream.CloseSend()
+			time.Sleep(time.Millisecond * 100)
 			return
 		}
 
-		outbound_message := &proto.ChitChatMessage{LamportTimestamp: 0, UserName: user_name, Message: input}
+		outbound_message := &proto.ChitChatMessage{UserName: user_name, Message: input}
 		container := &proto.ChitChatInformationContainer{
 			These: &proto.ChitChatInformationContainer_Message{Message: outbound_message},
 		}
 
 		stream.Send(container)
+	}
+
+	if err := stream.CloseSend(); err != nil {
+		log.Fatalf("Failed to close the send stream: %v", err)
 	}
 }

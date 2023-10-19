@@ -60,7 +60,6 @@ func (server *Server) Chat(stream proto.ChitChat_ChatServer) error {
 	for {
 		message, err := stream.Recv()
 		if err == io.EOF {
-			log.Print(err)
 			return nil
 		}
 		if err != nil {
@@ -68,31 +67,63 @@ func (server *Server) Chat(stream proto.ChitChat_ChatServer) error {
 		}
 		if message.GetConnectionRequest() != nil {
 			connectNewClient(server, message.GetConnectionRequest(), &stream)
-			connection_message := &proto.ChitChatMessage{
-				UserName: "Server",
-				Message:  message.GetConnectionRequest().UserName + " has joined the chat!",
-			}
-			broadcast(server, connection_message)
+		} else if message.GetDisconnectionRequest() != nil {
+			disconnectClient(server, message.GetDisconnectionRequest())
 		} else {
 
-			outbound_message := &proto.ChitChatMessage{LamportTimestamp: message.GetMessage().GetLamportTimestamp(), UserName: message.GetMessage().GetUserName(), Message: message.GetMessage().GetMessage()}
+			incommin_message := message.GetMessage()
+
+			outbound_message := &proto.ChitChatMessage{UserName: incommin_message.GetUserName(), Message: incommin_message.GetMessage()}
 
 			broadcast(server, outbound_message)
+			log.Printf("%v: %v", incommin_message.GetUserName(), incommin_message.GetMessage())
 		}
 	}
 }
 
-func connectNewClient(server *Server, client *proto.ConnectionRequest, stream *proto.ChitChat_ChatServer) {
+func connectNewClient(server *Server, message *proto.ConnectionRequest, stream *proto.ChitChat_ChatServer) {
 	server.clients = append(server.clients, Client{
 		stream:    *stream,
-		user_name: client.UserName,
+		user_name: message.GetUserName(),
 	})
-	log.Printf("%v has joined the chat", client.UserName)
+
+	connection_message := &proto.ChitChatMessage{
+		UserName: "Server",
+		Message:  message.GetUserName() + " has joined the chat!",
+	}
+
+	broadcast(server, connection_message)
+
+	log.Printf("%v has joined the chat", message.GetUserName())
+}
+
+func disconnectClient(server *Server, message *proto.DisconnectionRequest) {
+	for index, client := range server.clients {
+		if client.user_name == message.GetUserName() {
+			server.clients = remove(server.clients, index)
+		}
+	}
+
+	disconnection_message := &proto.ChitChatMessage{
+		UserName: "Server",
+		Message:  message.GetUserName() + " has left the chat!",
+	}
+
+	broadcast(server, disconnection_message)
+
+	log.Printf("%v has left the chat", message.GetUserName())
 }
 
 func broadcast(server *Server, message *proto.ChitChatMessage) {
+
+	container := &proto.ChitChatInformationContainer{
+		These: &proto.ChitChatInformationContainer_Message{
+			Message: message,
+		},
+	}
+
 	for _, client := range server.clients {
-		if err := client.stream.Send(message); err != nil {
+		if err := client.stream.Send(container); err != nil {
 			log.Fatalf("Error occured: %v", err)
 		}
 	}
@@ -109,4 +140,10 @@ func GetOutboundIP() string {
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 
 	return localAddr.IP.String()
+}
+
+// This function was found here: https://stackoverflow.com/a/37335777
+func remove(s []Client, i int) []Client {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
