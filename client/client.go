@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"log"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 
 var sPort = flag.String("sPort", "", "Server port")
 var user_name = flag.String("usr", "", "User name")
+var client_lampert_timestamp = 0
 
 func main() {
 	var wg sync.WaitGroup
@@ -30,6 +32,7 @@ func main() {
 }
 
 func ConnectToServer(server_address string) (pb.ChitChatClient, error) {
+	IncrementAndPrintLampertTimestamp("Dial server")
 	connection, err := grpc.Dial(server_address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	if err != nil {
@@ -48,10 +51,13 @@ func Chat(server_address string, user_name string, wg *sync.WaitGroup) {
 
 	stream, _ := server_connection.Chat(ctx)
 
+	IncrementAndPrintLampertTimestamp("Send connection request")
+
 	outbound_message := &pb.ConnectionRequest{
 		UserName: user_name,
 	}
 	message_container := &pb.ChitChatInformationContainer{
+		LamportTimestamp: int64(client_lampert_timestamp),
 		These: &pb.ChitChatInformationContainer_ConnectionRequest{
 			ConnectionRequest: outbound_message,
 		},
@@ -65,6 +71,8 @@ func Chat(server_address string, user_name string, wg *sync.WaitGroup) {
 
 func RecieveMessages(stream pb.ChitChat_ChatClient) {
 	for {
+		IncrementAndPrintLampertTimestamp("Recieve message")
+
 		inbound_message, err := stream.Recv()
 
 		if err == io.EOF {
@@ -72,6 +80,8 @@ func RecieveMessages(stream pb.ChitChat_ChatClient) {
 		} else if err != nil {
 			log.Fatalf("Failed: %v", err)
 		}
+
+		SetAndPrintLampertTimestamp("Validate timestamp", ValidateLampertTimestamp(client_lampert_timestamp, int(inbound_message.GetLamportTimestamp())))
 
 		log.Printf(inbound_message.GetMessage().GetUserName() + ": " + inbound_message.GetMessage().GetMessage())
 	}
@@ -85,12 +95,15 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 	for scanner.Scan() {
 		input := scanner.Text()
 
+		IncrementAndPrintLampertTimestamp("Publish message")
+
 		if input == "c" {
 			outbound_message := &pb.DisconnectionRequest{
 				UserName: user_name,
 			}
 			message_container := &pb.ChitChatInformationContainer{
-				These: &pb.ChitChatInformationContainer_DisconnectionRequest{DisconnectionRequest: outbound_message},
+				LamportTimestamp: int64(client_lampert_timestamp),
+				These:            &pb.ChitChatInformationContainer_DisconnectionRequest{DisconnectionRequest: outbound_message},
 			}
 
 			stream.Send(message_container)
@@ -101,7 +114,8 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 
 		outbound_message := &pb.ChitChatMessage{UserName: user_name, Message: input}
 		message_container := &pb.ChitChatInformationContainer{
-			These: &pb.ChitChatInformationContainer_Message{Message: outbound_message},
+			LamportTimestamp: int64(client_lampert_timestamp + 1),
+			These:            &pb.ChitChatInformationContainer_Message{Message: outbound_message},
 		}
 
 		stream.Send(message_container)
@@ -110,4 +124,18 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 	if err := stream.CloseSend(); err != nil {
 		log.Fatalf("Failed to close the send stream: %v", err)
 	}
+}
+
+func ValidateLampertTimestamp(client_timestamp int, server_timestamp int) int {
+	return int(math.Max(float64(client_timestamp), float64(server_timestamp)))
+}
+
+func IncrementAndPrintLampertTimestamp(action string) {
+	client_lampert_timestamp++
+	log.Printf("%v has incremented Lampert timestamp to: %v", action, client_lampert_timestamp)
+}
+
+func SetAndPrintLampertTimestamp(action string, new_value int) {
+	client_lampert_timestamp = new_value
+	log.Printf("%v has set Lampert timestamp to: %v", action, client_lampert_timestamp)
 }
