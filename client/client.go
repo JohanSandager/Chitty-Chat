@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 var sPort = flag.String("sPort", "", "Server port")
@@ -77,6 +79,10 @@ func RecieveMessages(stream pb.ChitChat_ChatClient) {
 
 		if err == io.EOF {
 			return
+		} else if status, ok := status.FromError(err); ok {
+			if status.Code() == codes.Unavailable {
+				log.Fatalf("Terminated ungracefully: %v", status.Message())
+			}
 		} else if err != nil {
 			log.Fatalf("Failed: %v", err)
 		}
