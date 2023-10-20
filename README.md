@@ -11,7 +11,7 @@ Johan <jsbe@itu.dk> <br>
 Standing in the root folder of the project:
 
 Use the following command in the terminal to run the server:
-    go run server/server.go -port <port>    
+    go run server/server.go -port \<port\>    
     
 User the following command in the terminal to run the client:
     go run client/client.go -sAddress <server_address> -usr <user_name>
