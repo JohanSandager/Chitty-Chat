@@ -7,11 +7,12 @@ import (
 	"log"
 	"math"
 	"net"
+	"strconv"
 
 	"google.golang.org/grpc"
 )
 
-var server_lampert_timestamp = 0
+var server_lamport_timestamp = 0
 
 type Server struct {
 	pb.UnimplementedChitChatServer
@@ -50,7 +51,7 @@ func StartServer(server *Server) {
 		log.Fatalf("Could not create server %v", err)
 	}
 
-	IncrementAndPrintLampertTimestamp("Server listening")
+	IncrementAndPrintLamportTimestamp("Server listening")
 	log.Printf("Server started at: %v \n", listen.Addr().String())
 
 	pb.RegisterChitChatServer(grpcServer, server)
@@ -63,15 +64,15 @@ func StartServer(server *Server) {
 func (server *Server) Chat(stream pb.ChitChat_ChatServer) error {
 	for {
 		message, err := stream.Recv()
-		IncrementAndPrintLampertTimestamp("Message recieved")
+		IncrementAndPrintLamportTimestamp("Message recieved")
 
-		SetAndPrintLampertTimestamp("Validate timestamp", ValidateLampertTimeStamp(int(message.GetLamportTimestamp()), server_lampert_timestamp))
+		SetAndPrintLamportTimestamp("Validate timestamp", ValidateLamportTimestamp(int(message.GetLamportTimestamp()), server_lamport_timestamp))
 
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
-			log.Fatalf("An error has occured at lampert timestamp %v: %v", err, server_lampert_timestamp)
+			log.Fatalf("An error has occured at lamport timestamp %v: %v", err, server_lamport_timestamp)
 		}
 
 		if message.GetConnectionRequest() != nil {
@@ -84,7 +85,7 @@ func (server *Server) Chat(stream pb.ChitChat_ChatServer) error {
 
 			outbound_message := &pb.ChitChatMessage{UserName: incommin_message.GetUserName(), Message: incommin_message.GetMessage()}
 
-			IncrementAndPrintLampertTimestamp("Broadcast recieved message")
+			IncrementAndPrintLamportTimestamp("Broadcast recieved message")
 			Broadcast(server, outbound_message)
 			log.Printf("%v: %v", incommin_message.GetUserName(), incommin_message.GetMessage())
 		}
@@ -99,10 +100,10 @@ func ConnectNewClient(server *Server, message *pb.ConnectionRequest, stream *pb.
 
 	connection_message := &pb.ChitChatMessage{
 		UserName: "Server",
-		Message:  message.GetUserName() + " has joined the chat!",
+		Message:  "Participant " + message.GetUserName() + " joined Chitty-Chat at Lamport time " + strconv.Itoa(server_lamport_timestamp),
 	}
 
-	IncrementAndPrintLampertTimestamp("Broadcast new client")
+	IncrementAndPrintLamportTimestamp("Broadcast new client")
 	Broadcast(server, connection_message)
 
 	log.Printf("%v has joined the chat", message.GetUserName())
@@ -117,10 +118,10 @@ func DisconnectClient(server *Server, message *pb.DisconnectionRequest) {
 
 	disconnection_message := &pb.ChitChatMessage{
 		UserName: "Server",
-		Message:  message.GetUserName() + " has left the chat!",
+		Message:  "Participant " + message.GetUserName() + " left Chitty-Chat at Lamport time " + strconv.Itoa(server_lamport_timestamp),
 	}
 
-	IncrementAndPrintLampertTimestamp("Broadcast client left")
+	IncrementAndPrintLamportTimestamp("Broadcast client left")
 	Broadcast(server, disconnection_message)
 
 	log.Printf("%v has left the chat", message.GetUserName())
@@ -128,7 +129,7 @@ func DisconnectClient(server *Server, message *pb.DisconnectionRequest) {
 
 func Broadcast(server *Server, message *pb.ChitChatMessage) {
 	container := &pb.ChitChatInformationContainer{
-		LamportTimestamp: int64(server_lampert_timestamp),
+		LamportTimestamp: int64(server_lamport_timestamp),
 		These: &pb.ChitChatInformationContainer_Message{
 			Message: message,
 		},
@@ -136,7 +137,7 @@ func Broadcast(server *Server, message *pb.ChitChatMessage) {
 
 	for _, client := range server.clients {
 		if err := client.stream.Send(container); err != nil {
-			log.Fatalf("Error occured at lampert timestamp %v: %v", err, server_lampert_timestamp)
+			log.Fatalf("Error occured at lamport timestamp %v: %v", err, server_lamport_timestamp)
 		}
 	}
 }
@@ -160,16 +161,16 @@ func Remove(s []Client, i int) []Client {
 	return s[:len(s)-1]
 }
 
-func ValidateLampertTimeStamp(client_timestamp int, server_timestamp int) int {
+func ValidateLamportTimestamp(client_timestamp int, server_timestamp int) int {
 	return int(math.Max(float64(client_timestamp), float64(server_timestamp)))
 }
 
-func IncrementAndPrintLampertTimestamp(action string) {
-	server_lampert_timestamp++
-	log.Printf("%v has incremented Lampert timestamp to: %v", action, server_lampert_timestamp)
+func IncrementAndPrintLamportTimestamp(action string) {
+	server_lamport_timestamp++
+	log.Printf("%v has incremented Lamport timestamp to: %v", action, server_lamport_timestamp)
 }
 
-func SetAndPrintLampertTimestamp(action string, new_value int) {
-	server_lampert_timestamp = new_value
-	log.Printf("%v has set Lampert timestamp to: %v", action, server_lampert_timestamp)
+func SetAndPrintLamportTimestamp(action string, new_value int) {
+	server_lamport_timestamp = new_value
+	log.Printf("%v has set Lamport timestamp to: %v", action, server_lamport_timestamp)
 }

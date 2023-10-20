@@ -18,7 +18,7 @@ import (
 
 var sPort = flag.String("sPort", "", "Server port")
 var user_name = flag.String("usr", "", "User name")
-var client_lampert_timestamp = 0
+var client_lamport_timestamp = 0
 
 func main() {
 	var wg sync.WaitGroup
@@ -32,7 +32,7 @@ func main() {
 }
 
 func ConnectToServer(server_address string) (pb.ChitChatClient, error) {
-	IncrementAndPrintLampertTimestamp("Dial server")
+	IncrementAndPrintLamportTimestamp("Dial server")
 	connection, err := grpc.Dial(server_address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	if err != nil {
@@ -51,13 +51,13 @@ func Chat(server_address string, user_name string, wg *sync.WaitGroup) {
 
 	stream, _ := server_connection.Chat(ctx)
 
-	IncrementAndPrintLampertTimestamp("Send connection request")
+	IncrementAndPrintLamportTimestamp("Send connection request")
 
 	outbound_message := &pb.ConnectionRequest{
 		UserName: user_name,
 	}
 	message_container := &pb.ChitChatInformationContainer{
-		LamportTimestamp: int64(client_lampert_timestamp),
+		LamportTimestamp: int64(client_lamport_timestamp),
 		These: &pb.ChitChatInformationContainer_ConnectionRequest{
 			ConnectionRequest: outbound_message,
 		},
@@ -71,7 +71,7 @@ func Chat(server_address string, user_name string, wg *sync.WaitGroup) {
 
 func RecieveMessages(stream pb.ChitChat_ChatClient) {
 	for {
-		IncrementAndPrintLampertTimestamp("Recieve message")
+		IncrementAndPrintLamportTimestamp("Recieve message")
 
 		inbound_message, err := stream.Recv()
 
@@ -81,7 +81,7 @@ func RecieveMessages(stream pb.ChitChat_ChatClient) {
 			log.Fatalf("Failed: %v", err)
 		}
 
-		SetAndPrintLampertTimestamp("Validate timestamp", ValidateLampertTimestamp(client_lampert_timestamp, int(inbound_message.GetLamportTimestamp())))
+		SetAndPrintLamportTimestamp("Validate timestamp", ValidateLamportTimestamp(client_lamport_timestamp, int(inbound_message.GetLamportTimestamp())))
 
 		log.Printf(inbound_message.GetMessage().GetUserName() + ": " + inbound_message.GetMessage().GetMessage())
 	}
@@ -95,14 +95,14 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 	for scanner.Scan() {
 		input := scanner.Text()
 
-		IncrementAndPrintLampertTimestamp("Publish message")
+		IncrementAndPrintLamportTimestamp("Publish message")
 
 		if input == "c" {
 			outbound_message := &pb.DisconnectionRequest{
 				UserName: user_name,
 			}
 			message_container := &pb.ChitChatInformationContainer{
-				LamportTimestamp: int64(client_lampert_timestamp),
+				LamportTimestamp: int64(client_lamport_timestamp),
 				These:            &pb.ChitChatInformationContainer_DisconnectionRequest{DisconnectionRequest: outbound_message},
 			}
 
@@ -114,7 +114,7 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 
 		outbound_message := &pb.ChitChatMessage{UserName: user_name, Message: input}
 		message_container := &pb.ChitChatInformationContainer{
-			LamportTimestamp: int64(client_lampert_timestamp + 1),
+			LamportTimestamp: int64(client_lamport_timestamp + 1),
 			These:            &pb.ChitChatInformationContainer_Message{Message: outbound_message},
 		}
 
@@ -126,16 +126,16 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 	}
 }
 
-func ValidateLampertTimestamp(client_timestamp int, server_timestamp int) int {
+func ValidateLamportTimestamp(client_timestamp int, server_timestamp int) int {
 	return int(math.Max(float64(client_timestamp), float64(server_timestamp)))
 }
 
-func IncrementAndPrintLampertTimestamp(action string) {
-	client_lampert_timestamp++
-	log.Printf("%v has incremented Lampert timestamp to: %v", action, client_lampert_timestamp)
+func IncrementAndPrintLamportTimestamp(action string) {
+	client_lamport_timestamp++
+	log.Printf("%v has incremented Lamport timestamp to: %v", action, client_lamport_timestamp)
 }
 
-func SetAndPrintLampertTimestamp(action string, new_value int) {
-	client_lampert_timestamp = new_value
-	log.Printf("%v has set Lampert timestamp to: %v", action, client_lampert_timestamp)
+func SetAndPrintLamportTimestamp(action string, new_value int) {
+	client_lamport_timestamp = new_value
+	log.Printf("%v has set Lamport timestamp to: %v", action, client_lamport_timestamp)
 }
