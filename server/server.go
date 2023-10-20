@@ -158,7 +158,7 @@ func AddClientToClients(stream *pb.ChitChat_ChatServer, server *Server, user_nam
 func CreateChitChatMessageObject(user_name string, message string) *pb.ChitChatInformationContainer {
 	outbound_message := &pb.ChitChatMessage{UserName: user_name, Message: message}
 	message_container := &pb.ChitChatInformationContainer{
-		LamportTimestamp: int64(server_lamport_timestamp + 1),
+		LamportTimestamp: int64(server_lamport_timestamp),
 		These:            &pb.ChitChatInformationContainer_Message{Message: outbound_message},
 	}
 	return message_container
