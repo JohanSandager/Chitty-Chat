@@ -19,7 +19,7 @@ import (
 )
 
 // Global variables
-var sPort = flag.String("sPort", "", "Server port")
+var sAddress = flag.String("sAddress", "", "Server address")
 var user_name = flag.String("usr", "", "User name")
 var client_lamport_timestamp = 0
 
@@ -29,7 +29,7 @@ func main() {
 
 	flag.Parse()
 
-	connection := ConnectToServer(*sPort)
+	connection := ConnectToServer(*sAddress)
 	client := GetClientFromConnection(connection)
 	stream := GetStream(client)
 	go Chat(*user_name, &wg, stream)
