@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Global variables
 var sPort = flag.String("sPort", "", "Server port")
 var user_name = flag.String("usr", "", "User name")
 var client_lamport_timestamp = 0
@@ -28,12 +29,18 @@ func main() {
 
 	flag.Parse()
 
-	go Chat(*sPort, *user_name, &wg)
+	connection := ConnectToServer(*sPort)
+	client := GetClientFromConnection(connection)
+	stream := GetStream(client)
+	go Chat(*user_name, &wg, stream)
 
 	wg.Wait()
 }
 
-func ConnectToServer(server_address string) (pb.ChitChatClient, error) {
+/*
+Dials the server and returns a connection.
+*/
+func ConnectToServer(server_address string) *grpc.ClientConn {
 	IncrementAndPrintLamportTimestamp("Dial server")
 	connection, err := grpc.Dial(server_address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
@@ -43,20 +50,32 @@ func ConnectToServer(server_address string) (pb.ChitChatClient, error) {
 
 	log.Printf("Connected to the server at %v\n", server_address)
 
-	return pb.NewChitChatClient(connection), nil
+	return connection
 }
 
-func Chat(server_address string, user_name string, wg *sync.WaitGroup) {
-	server_connection, _ := ConnectToServer(server_address)
+/*
+Creates and returns a ChitChat Client from a grpc client connection.
+*/
+func GetClientFromConnection(connection *grpc.ClientConn) pb.ChitChatClient {
+	client := pb.NewChitChatClient(connection)
+	return client
+}
 
-	stream, _ := server_connection.Chat(context.Background())
-
+/*
+Tells the server that it is ready to chat by sending a connection request.
+It starts two go routines one for listening and one for sending messages
+*/
+func Chat(user_name string, wg *sync.WaitGroup, stream pb.ChitChat_ChatClient) {
 	SendConnectionRequest(user_name, stream)
 
 	go RecieveMessages(stream)
 	go SendMessage(stream, user_name, wg)
 }
 
+/*
+Will continiously listen for messages and print them while the stream remains open.
+If the stream terminates ungracefully it will throw an error, otherwise it will just return.
+*/
 func RecieveMessages(stream pb.ChitChat_ChatClient) {
 	for {
 		IncrementAndPrintLamportTimestamp("Recieve message")
@@ -79,6 +98,9 @@ func RecieveMessages(stream pb.ChitChat_ChatClient) {
 	}
 }
 
+/*
+Listens for user input, upon recieving such it will determaine wheter it should close the connection, accept the message and send it or throw an error.
+*/
 func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -87,6 +109,7 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 	for scanner.Scan() {
 		if input := scanner.Text(); input == "c" {
 			SendDisconnectionRequest(user_name, stream)
+			time.Sleep(time.Millisecond * 100) // Sleep allows the resources to be freed before they are terminated by the return
 			return
 		} else if len(input) <= 128 {
 			Publish(stream, user_name, input)
@@ -98,16 +121,33 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 	}
 }
 
+/*
+Invokes the RPC returning a stream.
+*/
+func GetStream(client pb.ChitChatClient) pb.ChitChat_ChatClient {
+	stream, _ := client.Chat(context.Background())
+	return stream
+}
+
+/*
+Publishes a message to the stream.
+*/
 func Publish(stream pb.ChitChat_ChatClient, user_name string, input string) {
 	IncrementAndPrintLamportTimestamp("Publish message")
 	message := CreateChitChatMessageObject(user_name, input)
 	stream.Send(message)
 }
 
+/*
+Logs a formatted ChitChat message.
+*/
 func PrintMessage(message *pb.ChitChatMessage) {
 	log.Printf(message.GetUserName() + ": " + message.GetMessage())
 }
 
+/*
+Sends a connection request.
+*/
 func SendConnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
 	IncrementAndPrintLamportTimestamp("Send connection request")
 	message := CreateConnectionRequestObject(user_name)
@@ -116,6 +156,9 @@ func SendConnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
 	}
 }
 
+/*
+Sends a disconnection request.
+*/
 func SendDisconnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
 	message := CreateDisconnectionRequestObject(user_name)
 	if err := stream.Send(message); err != nil {
@@ -125,10 +168,11 @@ func SendDisconnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
 	if err := stream.CloseSend(); err != nil {
 		log.Fatalf("Failed to close the send stream: %v", err)
 	}
-
-	time.Sleep(time.Millisecond * 100)
 }
 
+/*
+Creates a ChitChat message rapped in a message container.
+*/
 func CreateChitChatMessageObject(user_name string, input string) *pb.ChitChatInformationContainer {
 	outbound_message := &pb.ChitChatMessage{UserName: user_name, Message: input}
 	message_container := &pb.ChitChatInformationContainer{
@@ -138,6 +182,9 @@ func CreateChitChatMessageObject(user_name string, input string) *pb.ChitChatInf
 	return message_container
 }
 
+/*
+Creates a disconnection request rapped in a message container.
+*/
 func CreateDisconnectionRequestObject(user_name string) *pb.ChitChatInformationContainer {
 	outbound_message := &pb.DisconnectionRequest{
 		UserName: user_name,
@@ -149,6 +196,9 @@ func CreateDisconnectionRequestObject(user_name string) *pb.ChitChatInformationC
 	return message_container
 }
 
+/*
+Creates a connection request rapped in a message container.
+*/
 func CreateConnectionRequestObject(user_name string) *pb.ChitChatInformationContainer {
 	outbound_message := &pb.ConnectionRequest{
 		UserName: user_name,
@@ -162,6 +212,9 @@ func CreateConnectionRequestObject(user_name string) *pb.ChitChatInformationCont
 	return message_container
 }
 
+/*
+Validates wheter the client of the sever Lampert timestamp is the correct one.
+*/
 func ValidateLamportTimestamp(client_timestamp int, server_timestamp int) int {
 	return int(math.Max(float64(client_timestamp), float64(server_timestamp)))
 }
