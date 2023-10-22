@@ -13,7 +13,7 @@ import (
 )
 
 // Global variable
-var server_lamport_timestamp = 0
+var server_lamport_time = 0
 var port = flag.String("port", "", "server port")
 
 // Keeps track of the server address, the port and connected clients
@@ -74,27 +74,28 @@ func (server *Server) Chat(stream pb.ChitChat_ChatServer) error {
 func RecieveMessages(stream pb.ChitChat_ChatServer, server *Server) error {
 	for {
 		message, err := stream.Recv()
-		IncrementAndPrintLamportTimestamp("Message recieved")
 
-		SetAndPrintLamportTimestamp("Validate timestamp", ValidateLamportTimestamp(int(message.GetLamportTimestamp()), server_lamport_timestamp))
+		SetAndPrintLamportTimestamp("Validate recieved timestamp", ValidateLamportTimestamp(int(message.GetLamportTimestamp()), server_lamport_time)+1)
+		recieved_timestamp := server_lamport_time
 
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
-			log.Fatalf("An error has occured at lamport timestamp %v: %v", err, server_lamport_timestamp)
+			log.Fatalf("An error has occured at lamport timestamp %v: %v", err, server_lamport_time)
 		}
 
-		HandleRecievedMessage(message, stream, server)
+		HandleRecievedMessage(message, stream, server, recieved_timestamp)
 	}
 }
 
 // Handles a message, depending on the type of message
-func HandleRecievedMessage(message *pb.ChitChatInformationContainer, stream pb.ChitChat_ChatServer, server *Server) {
+func HandleRecievedMessage(message *pb.ChitChatInformationContainer, stream pb.ChitChat_ChatServer, server *Server, recieved_timestamp int) {
+
 	if message.GetConnectionRequest() != nil {
-		ConnectNewClient(server, message.GetConnectionRequest(), &stream)
+		ConnectNewClient(server, message.GetConnectionRequest(), recieved_timestamp, &stream)
 	} else if message.GetDisconnectionRequest() != nil {
-		DisconnectClient(server, message.GetDisconnectionRequest())
+		DisconnectClient(server, message.GetDisconnectionRequest(), recieved_timestamp)
 	} else {
 		incommin_message := message.GetMessage()
 
@@ -108,21 +109,23 @@ func HandleRecievedMessage(message *pb.ChitChatInformationContainer, stream pb.C
 }
 
 // Connects a new client to the server and broadcasts this change
-func ConnectNewClient(server *Server, message *pb.ConnectionRequest, stream *pb.ChitChat_ChatServer) {
+func ConnectNewClient(server *Server, message *pb.ConnectionRequest, recieved_timestamp int, stream *pb.ChitChat_ChatServer) {
 	user_name := message.GetUserName()
 
+	IncrementAndPrintLamportTimestamp("Add new client")
 	AddClientToClients(stream, server, user_name)
 
 	IncrementAndPrintLamportTimestamp("Broadcast new client")
-	Broadcast(server, "Server", GetFormattedConnectionMessage(user_name))
+	Broadcast(server, "Server", GetFormattedConnectionMessage(user_name, recieved_timestamp))
 
 	log.Printf("%v has joined the chat", message.GetUserName())
 }
 
 // Disconnects a client from a server and broadcasts this change
-func DisconnectClient(server *Server, message *pb.DisconnectionRequest) {
+func DisconnectClient(server *Server, message *pb.DisconnectionRequest, recieved_timestamp int) {
 	user_name := message.GetUserName()
 
+	IncrementAndPrintLamportTimestamp("Disconnect client")
 	for index, client := range server.connected_clients {
 		if client.user_name == user_name {
 			server.connected_clients = Remove(server.connected_clients, index)
@@ -130,7 +133,7 @@ func DisconnectClient(server *Server, message *pb.DisconnectionRequest) {
 	}
 
 	IncrementAndPrintLamportTimestamp("Broadcast client left")
-	Broadcast(server, "Server", GetFormattedDisconnetionMessage(user_name))
+	Broadcast(server, "Server", GetFormattedDisconnetionMessage(user_name, recieved_timestamp))
 
 	log.Printf("%v has left the chat", message.GetUserName())
 }
@@ -141,7 +144,7 @@ func Broadcast(server *Server, user_name string, message string) {
 
 	for _, client := range server.connected_clients {
 		if err := client.stream.Send(container); err != nil {
-			log.Fatalf("Error occured at lamport timestamp %v: %v", err, server_lamport_timestamp)
+			log.Fatalf("Error occured at lamport timestamp %v: %v", err, server_lamport_time)
 		}
 	}
 }
@@ -158,20 +161,20 @@ func AddClientToClients(stream *pb.ChitChat_ChatServer, server *Server, user_nam
 func CreateChitChatMessageObject(user_name string, message string) *pb.ChitChatInformationContainer {
 	outbound_message := &pb.ChitChatMessage{UserName: user_name, Message: message}
 	message_container := &pb.ChitChatInformationContainer{
-		LamportTimestamp: int64(server_lamport_timestamp),
+		LamportTimestamp: int64(server_lamport_time),
 		These:            &pb.ChitChatInformationContainer_Message{Message: outbound_message},
 	}
 	return message_container
 }
 
 // Formats and returns a disconnection request
-func GetFormattedDisconnetionMessage(user_name string) string {
-	return "Participant " + user_name + " left Chitty-Chat at Lamport time " + strconv.Itoa(server_lamport_timestamp)
+func GetFormattedDisconnetionMessage(user_name string, recived_timestamp int) string {
+	return "Participant " + user_name + " left Chitty-Chat at Lamport time " + strconv.Itoa(recived_timestamp)
 }
 
 // Formats and returns a connection request
-func GetFormattedConnectionMessage(user_name string) string {
-	return "Participant " + user_name + " joined Chitty-Chat at Lamport time " + strconv.Itoa(server_lamport_timestamp)
+func GetFormattedConnectionMessage(user_name string, recieved_timestamp int) string {
+	return "Participant " + user_name + " joined Chitty-Chat at Lamport time " + strconv.Itoa(recieved_timestamp)
 }
 
 // This function was found here: https://stackoverflow.com/a/37382208
@@ -199,11 +202,11 @@ func ValidateLamportTimestamp(client_timestamp int, server_timestamp int) int {
 }
 
 func IncrementAndPrintLamportTimestamp(action string) {
-	server_lamport_timestamp++
-	log.Printf("%v has incremented Lampert timestamp to: %v", action, server_lamport_timestamp)
+	server_lamport_time++
+	log.Printf("%v has incremented Lampert timestamp to: %v", action, server_lamport_time)
 }
 
 func SetAndPrintLamportTimestamp(action string, new_value int) {
-	server_lamport_timestamp = new_value
-	log.Printf("%v has set Lampert timestamp to: %v", action, server_lamport_timestamp)
+	server_lamport_time = new_value
+	log.Printf("%v has set Lampert timestamp to: %v", action, server_lamport_time)
 }

@@ -74,7 +74,6 @@ If the stream terminates ungracefully it will throw an error, otherwise it will 
 */
 func RecieveMessages(stream pb.ChitChat_ChatClient) {
 	for {
-		IncrementAndPrintLamportTimestamp("Recieve message")
 
 		inbound_message, err := stream.Recv()
 
@@ -88,9 +87,9 @@ func RecieveMessages(stream pb.ChitChat_ChatClient) {
 			log.Fatalf("Failed: %v", err)
 		}
 
-		SetAndPrintLamportTimestamp("Validate timestamp", ValidateLamportTimestamp(client_lamport_timestamp, int(inbound_message.GetLamportTimestamp())))
-
 		PrintMessage(inbound_message.GetMessage())
+
+		SetAndPrintLamportTimestamp("Validate recieved timestamp", ValidateLamportTimestamp(client_lamport_timestamp, int(inbound_message.GetLamportTimestamp()))+1)
 	}
 }
 
@@ -158,7 +157,7 @@ func SendDisconnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
 func CreateChitChatMessageObject(user_name string, input string) *pb.ChitChatInformationContainer {
 	outbound_message := &pb.ChitChatMessage{UserName: user_name, Message: input}
 	message_container := &pb.ChitChatInformationContainer{
-		LamportTimestamp: int64(client_lamport_timestamp + 1),
+		LamportTimestamp: int64(client_lamport_timestamp),
 		These:            &pb.ChitChatInformationContainer_Message{Message: outbound_message},
 	}
 	return message_container
