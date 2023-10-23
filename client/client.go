@@ -116,7 +116,12 @@ func SendMessage(stream pb.ChitChat_ChatClient, user_name string, wg *sync.WaitG
 
 // Invokes the RPC returning a stream.
 func GetStream(client pb.ChitChatClient) pb.ChitChat_ChatClient {
-	stream, _ := client.Chat(context.Background())
+	stream, err := client.Chat(context.Background())
+
+	if err != nil {
+		log.Fatalf("Could call gRPC: %v", err)
+	}
+
 	return stream
 }
 
