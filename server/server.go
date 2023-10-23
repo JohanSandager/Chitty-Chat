@@ -85,7 +85,7 @@ func RecieveMessages(stream pb.ChitChat_ChatServer, server *Server) error {
 			log.Fatalf("An error has occured at lamport timestamp %v: %v", err, server_lamport_time)
 		}
 
-		HandleRecievedMessage(message, stream, server, recieved_timestamp)
+		go HandleRecievedMessage(message, stream, server, recieved_timestamp)
 	}
 }
 
