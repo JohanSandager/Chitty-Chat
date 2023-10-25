@@ -148,6 +148,7 @@ func SendConnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
 
 // Sends a disconnection request.
 func SendDisconnectionRequest(user_name string, stream pb.ChitChat_ChatClient) {
+	IncrementAndPrintLamportTimestamp("Send disconnection request")
 	message := CreateDisconnectionRequestObject(user_name)
 	if err := stream.Send(message); err != nil {
 		log.Fatalf("Failed to send disconnection request: %v", err)

@@ -38,7 +38,7 @@ func main() {
 		port:    *port,
 	}
 
-	go StartServer(server)
+	go RunServer(server)
 
 	for {
 
@@ -46,7 +46,7 @@ func main() {
 }
 
 // Creates, opens port and registers a server
-func StartServer(server *Server) {
+func RunServer(server *Server) {
 	grpcServer := grpc.NewServer()
 	listener, err := net.Listen("tcp", server.address+":"+server.port)
 
@@ -76,16 +76,16 @@ func RecieveMessages(stream pb.ChitChat_ChatServer, server *Server) error {
 		message, err := stream.Recv()
 
 		SetAndPrintLamportTimestamp("Validate recieved timestamp", ValidateLamportTimestamp(int(message.GetLamportTimestamp()), server_lamport_time)+1)
-		recieved_timestamp := server_lamport_time
+		recieved_at_timestamp := server_lamport_time
 
 		if err == io.EOF {
 			return nil
 		}
 		if err != nil {
-			log.Fatalf("An error has occured at lamport timestamp %v: %v", err, server_lamport_time)
+			log.Fatalf("An error has occured at lamport timestamp %v: %v", server_lamport_time, err)
 		}
 
-		go HandleRecievedMessage(message, stream, server, recieved_timestamp)
+		HandleRecievedMessage(message, stream, server, recieved_at_timestamp)
 	}
 }
 
